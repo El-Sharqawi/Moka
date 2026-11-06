@@ -20,6 +20,8 @@ export default function MusicPlayer() {
   const [volume, setVolume] = useState(0.7);
   const [muted, setMuted] = useState(false);
   const [audioError, setAudioError] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playingRef = useRef(false);
@@ -32,6 +34,18 @@ export default function MusicPlayer() {
     playingRef.current = value;
     setPlaying(value);
   }, []);
+
+  const formatTime = (time: number) => {
+    if (!Number.isFinite(time) || time < 0) return '0:00';
+
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  };
+
+  const progress =
+    duration > 0 ? Math.min((currentTime / duration) * 100, 100) : 0;
 
   const playAudio = useCallback(
     async (audio: HTMLAudioElement, restart: boolean) => {
@@ -46,16 +60,19 @@ export default function MusicPlayer() {
 
         if (requestId !== playRequestRef.current || audioRef.current !== audio) return;
         pendingPlayRef.current = null;
+
         if (audio.paused) {
           syncPlayingState(false);
           return;
         }
+
         syncPlayingState(true);
       } catch (error) {
         if (requestId !== playRequestRef.current || audioRef.current !== audio) return;
 
         pendingPlayRef.current = null;
         syncPlayingState(false);
+
         if (!(error instanceof DOMException && error.name === 'AbortError')) {
           setAudioError(true);
         }
@@ -82,12 +99,16 @@ export default function MusicPlayer() {
     const audio = audioRef.current;
     if (!audio) return;
 
+    setCurrentTime(0);
+    setDuration(0);
+
     audio.load();
     setAudioError(false);
 
     if (playingRef.current) {
       void playAudio(audio, false);
     }
+
     return () => {
       playRequestRef.current += 1;
       pendingPlayRef.current = null;
@@ -113,7 +134,11 @@ export default function MusicPlayer() {
   const next = (shouldPlay = playingRef.current) => {
     playRequestRef.current += 1;
     pendingPlayRef.current = null;
-    if (playingRef.current !== shouldPlay) syncPlayingState(shouldPlay);
+
+    if (playingRef.current !== shouldPlay) {
+      syncPlayingState(shouldPlay);
+    }
+
     setCurrentIndex((i) => (i + 1) % songs.length);
   };
 
@@ -146,6 +171,19 @@ export default function MusicPlayer() {
         ref={audioRef}
         src={current.src}
         preload="metadata"
+        onLoadedMetadata={(event) => {
+          if (audioRef.current !== event.currentTarget) return;
+          setDuration(event.currentTarget.duration || 0);
+          setCurrentTime(event.currentTarget.currentTime || 0);
+        }}
+        onDurationChange={(event) => {
+          if (audioRef.current !== event.currentTarget) return;
+          setDuration(event.currentTarget.duration || 0);
+        }}
+        onTimeUpdate={(event) => {
+          if (audioRef.current !== event.currentTarget) return;
+          setCurrentTime(event.currentTarget.currentTime);
+        }}
         onEnded={(event) => {
           if (audioRef.current === event.currentTarget) next(true);
         }}
@@ -160,6 +198,7 @@ export default function MusicPlayer() {
             !event.currentTarget.paused ||
             pendingPlayRef.current !== null
           ) return;
+
           syncPlayingState(false);
         }}
         onError={(event) => {
@@ -276,6 +315,35 @@ export default function MusicPlayer() {
               >
                 <SkipForward className="h-5 w-5" />
               </button>
+            </div>
+
+            {/* Song progress bar */}
+            <div className="mb-4">
+              <input
+                type="range"
+                min={0}
+                max={duration || 0}
+                step={0.1}
+                value={Math.min(currentTime, duration || 0)}
+                onChange={(event) => {
+                  const audio = audioRef.current;
+                  if (!audio || !Number.isFinite(duration)) return;
+
+                  const time = Number(event.target.value);
+                  audio.currentTime = time;
+                  setCurrentTime(time);
+                }}
+                aria-label="تقدم الأغنية"
+                className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-rose-200 accent-rose-600"
+                style={{
+                  background: `linear-gradient(to right, #e11d48 ${progress}%, #fecdd3 ${progress}%)`,
+                }}
+              />
+
+              <div className="mt-1 flex justify-between text-xs text-rose-500">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
