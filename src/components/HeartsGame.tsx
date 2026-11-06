@@ -93,8 +93,7 @@ export default function HeartsGame({ onBurst }: Props) {
       {current && (
         <div
           key={openIndex}
-          className="mt-6 mx-auto max-w-md animate-scaleIn"
-        >
+          className="mt-6 mx-auto max-w-md animate-scaleIn">
           <div className={`rounded-3xl bg-gradient-to-br ${typeColors[current.type]} p-1 shadow-2xl`}>
             <div className="rounded-[1.4rem] bg-white/95 p-6 text-center backdrop-blur">
               <div className="mb-3 flex items-center justify-center gap-2">

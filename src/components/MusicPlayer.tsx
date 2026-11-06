@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Music,
   Play,
@@ -23,24 +23,46 @@ export default function MusicPlayer() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playingRef = useRef(false);
+  const playRequestRef = useRef(0);
+  const pendingPlayRef = useRef<number | null>(null);
 
   const current = songs[currentIndex];
 
-  const playFromStart = async (audio: HTMLAudioElement) => {
-    setAudioError(false);
+  const syncPlayingState = useCallback((value: boolean) => {
+    playingRef.current = value;
+    setPlaying(value);
+  }, []);
 
-    try {
-      audio.currentTime = 0;
-      playingRef.current = true;
-      await audio.play();
-      setPlaying(true);
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return;
-      playingRef.current = false;
-      setPlaying(false);
-      setAudioError(true);
-    }
-  };
+  const playAudio = useCallback(
+    async (audio: HTMLAudioElement, restart: boolean) => {
+      const requestId = ++playRequestRef.current;
+      pendingPlayRef.current = requestId;
+      setAudioError(false);
+      syncPlayingState(true);
+
+      try {
+        if (restart) audio.currentTime = 0;
+        await audio.play();
+
+        if (requestId !== playRequestRef.current || audioRef.current !== audio) return;
+        pendingPlayRef.current = null;
+        if (audio.paused) {
+          syncPlayingState(false);
+          return;
+        }
+        syncPlayingState(true);
+      } catch (error) {
+        if (requestId !== playRequestRef.current || audioRef.current !== audio) return;
+
+        pendingPlayRef.current = null;
+        syncPlayingState(false);
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          setAudioError(true);
+        }
+      }
+    },
+    [syncPlayingState],
+  );
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -53,78 +75,98 @@ export default function MusicPlayer() {
     const audio = audioRef.current;
     if (!audio) return;
 
-    audio.pause();
-    audio.currentTime = 0;
-    audio.load();
+    audio.volume = muted ? 0 : volume;
+  }, [current.id, muted, volume]);
 
-    setAudioError(false);
-
-    if (playingRef.current) {
-      audio.play().catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
-        playingRef.current = false;
-        setPlaying(false);
-        setAudioError(true);
-      });
-    }
-  }, [currentIndex]);
-
-  const togglePlay = async () => {
+  useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    if (playing) {
+    audio.load();
+    setAudioError(false);
+
+    if (playingRef.current) {
+      void playAudio(audio, false);
+    }
+    return () => {
+      playRequestRef.current += 1;
+      pendingPlayRef.current = null;
       audio.pause();
-      playingRef.current = false;
-      setPlaying(false);
+    };
+  }, [current.id, playAudio]);
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (playingRef.current) {
+      playRequestRef.current += 1;
+      pendingPlayRef.current = null;
+      syncPlayingState(false);
+      audio.pause();
       return;
     }
 
-    await playFromStart(audio);
+    void playAudio(audio, false);
   };
 
-  const next = () => {
-    playingRef.current = true;
-    setPlaying(true);
+  const next = (shouldPlay = playingRef.current) => {
+    playRequestRef.current += 1;
+    pendingPlayRef.current = null;
+    if (playingRef.current !== shouldPlay) syncPlayingState(shouldPlay);
     setCurrentIndex((i) => (i + 1) % songs.length);
   };
 
   const prev = () => {
-    playingRef.current = true;
-    setPlaying(true);
+    playRequestRef.current += 1;
+    pendingPlayRef.current = null;
     setCurrentIndex((i) => (i - 1 + songs.length) % songs.length);
   };
 
   const selectSong = (index: number) => {
-    playingRef.current = true;
-    setPlaying(true);
+    setAudioError(false);
+    setOpen(false);
+
     if (index === currentIndex) {
       const audio = audioRef.current;
-      if (audio) void playFromStart(audio);
+      if (audio) void playAudio(audio, true);
+      return;
     }
+
+    playRequestRef.current += 1;
+    pendingPlayRef.current = null;
+    syncPlayingState(true);
     setCurrentIndex(index);
-    setOpen(false);
   };
 
   return (
     <>
       <audio
+        key={current.id}
         ref={audioRef}
         src={current.src}
         preload="metadata"
-        onEnded={next}
-        onPlay={() => {
-          playingRef.current = true;
-          setPlaying(true);
+        onEnded={(event) => {
+          if (audioRef.current === event.currentTarget) next(true);
+        }}
+        onPlay={(event) => {
+          if (audioRef.current !== event.currentTarget || event.currentTarget.paused) return;
+          pendingPlayRef.current = null;
+          syncPlayingState(true);
         }}
         onPause={(event) => {
-          if (!event.currentTarget.paused) return;
-          playingRef.current = false;
-          setPlaying(false);
+          if (
+            audioRef.current !== event.currentTarget ||
+            !event.currentTarget.paused ||
+            pendingPlayRef.current !== null
+          ) return;
+          syncPlayingState(false);
         }}
-        onError={() => {
-          playingRef.current = false;
-          setPlaying(false);
+        onError={(event) => {
+          if (audioRef.current !== event.currentTarget) return;
+          playRequestRef.current += 1;
+          pendingPlayRef.current = null;
+          syncPlayingState(false);
           setAudioError(true);
         }}
       />
@@ -228,7 +270,7 @@ export default function MusicPlayer() {
               </button>
 
               <button
-                onClick={next}
+                onClick={() => next()}
                 aria-label="الأغنية التالية"
                 className="rounded-full p-2 text-rose-700 transition hover:bg-rose-100 active:scale-90"
               >
@@ -266,7 +308,7 @@ export default function MusicPlayer() {
 
             {audioError && (
               <p className="mt-3 text-center text-xs text-red-500">
-                مش قادرين نشغل الأغنية. اتأكدي إن ملف MP3 موجود وصيغته سليمة.
+                تعذّر تشغيل الأغنية. تحققي من الاتصال بالإنترنت أو جرّبي أغنية أخرى.
               </p>
             )}
           </div>

@@ -10,7 +10,7 @@ type Props = {
 export default function HeartBurstButton({ onBurst, children, className = '' }: Props) {
   const [local, setLocal] = useState<number[]>([]);
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = () => {
     const id = Date.now() + Math.random();
     setLocal((s) => [...s, id]);
     setTimeout(() => setLocal((s) => s.filter((x) => x !== id)), 4000);

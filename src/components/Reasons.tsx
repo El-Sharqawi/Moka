@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { ChevronLeft, RotateCcw, Sparkles } from 'lucide-react';
 import { reasons } from '../data/reasons';
 import { useLocalStorage } from '../lib/utils';
