@@ -336,8 +336,8 @@ export default function MusicPlayer() {
                 aria-label="تقدم الأغنية"
                 className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-rose-200 accent-rose-600"
                 style={{
-                  background: `linear-gradient(to right, #e11d48 ${progress}%, #fecdd3 ${progress}%)`,
-                }}
+                  background: `linear-gradient(to left, #e11d48 ${progress}%, #fecdd3 ${progress}%)`,
+        }}
               />
 
               <div className="mt-1 flex justify-between text-xs text-rose-500">
