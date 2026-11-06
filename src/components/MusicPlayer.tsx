@@ -22,8 +22,25 @@ export default function MusicPlayer() {
   const [audioError, setAudioError] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playingRef = useRef(false);
 
   const current = songs[currentIndex];
+
+  const playFromStart = async (audio: HTMLAudioElement) => {
+    setAudioError(false);
+
+    try {
+      audio.currentTime = 0;
+      playingRef.current = true;
+      await audio.play();
+      setPlaying(true);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      playingRef.current = false;
+      setPlaying(false);
+      setAudioError(true);
+    }
+  };
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -42,8 +59,10 @@ export default function MusicPlayer() {
 
     setAudioError(false);
 
-    if (playing) {
-      audio.play().catch(() => {
+    if (playingRef.current) {
+      audio.play().catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        playingRef.current = false;
         setPlaying(false);
         setAudioError(true);
       });
@@ -56,33 +75,33 @@ export default function MusicPlayer() {
 
     if (playing) {
       audio.pause();
+      playingRef.current = false;
       setPlaying(false);
       return;
     }
 
-    setAudioError(false);
-
-    try {
-      await audio.play();
-      setPlaying(true);
-    } catch {
-      setPlaying(false);
-      setAudioError(true);
-    }
+    await playFromStart(audio);
   };
 
   const next = () => {
+    playingRef.current = true;
     setPlaying(true);
     setCurrentIndex((i) => (i + 1) % songs.length);
   };
 
   const prev = () => {
+    playingRef.current = true;
     setPlaying(true);
     setCurrentIndex((i) => (i - 1 + songs.length) % songs.length);
   };
 
   const selectSong = (index: number) => {
+    playingRef.current = true;
     setPlaying(true);
+    if (index === currentIndex) {
+      const audio = audioRef.current;
+      if (audio) void playFromStart(audio);
+    }
     setCurrentIndex(index);
     setOpen(false);
   };
@@ -94,9 +113,17 @@ export default function MusicPlayer() {
         src={current.src}
         preload="metadata"
         onEnded={next}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
+        onPlay={() => {
+          playingRef.current = true;
+          setPlaying(true);
+        }}
+        onPause={(event) => {
+          if (!event.currentTarget.paused) return;
+          playingRef.current = false;
+          setPlaying(false);
+        }}
         onError={() => {
+          playingRef.current = false;
           setPlaying(false);
           setAudioError(true);
         }}
@@ -185,7 +212,7 @@ export default function MusicPlayer() {
                 aria-label="الأغنية السابقة"
                 className="rounded-full p-2 text-rose-700 transition hover:bg-rose-100 active:scale-90"
               >
-                <SkipForward className="h-5 w-5" />
+                <SkipBack className="h-5 w-5" />
               </button>
 
               <button
@@ -205,7 +232,7 @@ export default function MusicPlayer() {
                 aria-label="الأغنية التالية"
                 className="rounded-full p-2 text-rose-700 transition hover:bg-rose-100 active:scale-90"
               >
-                <SkipBack className="h-5 w-5" />
+                <SkipForward className="h-5 w-5" />
               </button>
             </div>
 
